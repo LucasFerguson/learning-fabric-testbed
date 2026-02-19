@@ -5,12 +5,23 @@ import base64
 import json
 import os
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from fabrictestbed_extensions.fablib.fablib import FablibManager
 
 def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+
+@contextmanager
+def log_step(title: str) -> None:
+    log(f"{title}...")
+    start = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - start
+        log(f"{title} done in {elapsed:.1f}s")
 
 def _load_token_payload(token_path: Path) -> dict | None:
     if not token_path.exists():
@@ -50,6 +61,17 @@ def _check_token_freshness() -> bool:
     log(f"Token OK; expires at {exp_dt.isoformat()} (~{minutes_left} minutes left).")
     return True
 
+def _check_file_env(var_name: str, label: str) -> bool:
+    path = os.environ.get(var_name)
+    if not path:
+        log(f"{label} env var {var_name} is not set.")
+        return False
+    p = Path(path)
+    if not p.exists():
+        log(f"{label} file missing at {p}")
+        return False
+    return True
+
 def main() -> int:
     # Common failures:
     # - you forgot to `source .../fabric_rc`
@@ -60,6 +82,10 @@ def main() -> int:
     if not _check_token_freshness():
         return 2
     log("Config/token valid")
+
+    _check_file_env("FABRIC_BASTION_KEY_LOCATION", "Bastion key")
+    _check_file_env("FABRIC_SLICE_PRIVATE_KEY_FILE", "Slice private key")
+    _check_file_env("FABRIC_SLICE_PUBLIC_KEY_FILE", "Slice public key")
 
     log("Initializing FablibManager (network call)")
     try:
@@ -76,31 +102,31 @@ def main() -> int:
     image = "default_ubuntu_20"
 
     try:
-        log(f"Creating slice object {slice_name}")
-        slc = fablib.new_slice(name=slice_name)
+        with log_step(f"Creating slice object {slice_name}"):
+            slc = fablib.new_slice(name=slice_name)
 
         # Minimal 1-node slice
-        log("Adding node to slice")
-        slc.add_node(name="node1", site=site, image=image, cores=2, ram=4, disk=10)
+        with log_step("Adding node to slice"):
+            slc.add_node(name="node1", site=site, image=image, cores=2, ram=4, disk=10)
 
-        log("Submitting slice (provisioning starts here)")
-        slc.submit()
+        with log_step("Submitting slice (provisioning starts here)"):
+            slc.submit()
 
         # Poll state until stable-ish
         timeout_s = 600
         poll_s = 15
         start = time.time()
 
-        while True:
-            log("Polling slice state")
-            state = slc.get_state()
-            log(f"Slice state: {state}")
-            if "Stable" in str(state) or "OK" in str(state):
-                break
-            if time.time() - start > timeout_s:
-                log("Timed out waiting for stable; check FABRIC portal for sliver errors.")
-                return 3
-            time.sleep(poll_s)
+        with log_step("Waiting for slice to become stable"):
+            while True:
+                state = slc.get_state()
+                log(f"Slice state: {state}")
+                if "Stable" in str(state) or "OK" in str(state):
+                    break
+                if time.time() - start > timeout_s:
+                    log("Timed out waiting for stable; check FABRIC portal for sliver errors.")
+                    return 3
+                time.sleep(poll_s)
 
         log("Slice is stable; printing summary:")
         print(slc)
