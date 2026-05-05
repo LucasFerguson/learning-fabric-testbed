@@ -7,7 +7,7 @@ RC_FILE="${CFG_DIR}/fabric_rc"
 mkdir -p "$CFG_DIR"
 
 # Required; set these before running, or edit here
-: "${FABRIC_PROJECT_ID:=Pe34dd6bb-f899-499d-a7af-8dfa60559ecb}"
+: "${FABRIC_PROJECT_ID:=e34dd6bb-f899-499d-a7af-8dfa60559ecb}"
 : "${FABRIC_BASTION_USERNAME:=lferguson_0000287022}"
 : "${FABRIC_TOKEN_LOCATION:=${CFG_DIR}/token.json}"
 
